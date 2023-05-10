@@ -12,7 +12,7 @@ The supplementary material for the above-mentioned paper can be found in ```Lear
 1. Refer to  ```./preprocess/PreprocessGeoFile.py```
     - This file takes is in ```./data/RawData/road_name_grid0.02_npc2.geojson```.
     - It outputs ```grids_medoid.pkl```, ```grids_nodes_count.pkl``` and ```travel_time_matrix.pkl```.
-    - All the output files are saved in ```./data/RawData folder```.
+    - All the output files are saved in ```./data/RawData```.
 
 2. Refer to ```./preprocess/PreprocessRawData.py```
     - A function ```process_patrol_areas_files()``` takes in all the raw data files to output a Dataset Object.
