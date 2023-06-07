@@ -118,6 +118,6 @@ python RunExperiment.py --sectors=EFL --model=greedy
 Note: 
 - If only one sector is inputted, the model should solve it as if it is a single-agent problem.
 - You may input the following models in the ```--model=```: greedy, myopic, VFA or MADQN.
-- Ensure thate ```pre_trained=True``` if you are running learned models. Make sure that the parameter file is located at the corresponding parameter subfolder (for e.g. ```./xxx/parameters/```).
+- Ensure that ```pre_trained=True``` if you are running a learned model. Make sure that the parameter file is located at the corresponding parameter subfolder (for e.g. ```./xxx/parameters/```).
 
 ## References
