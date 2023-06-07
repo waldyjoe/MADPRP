@@ -79,9 +79,8 @@ All non-RL models can be found in ```./model```.
 
 ### RL Models
 
-- Separate folders created for each of the RL models such as ```vfa``` and ```mavfa```.
-- Each folder contains parameter folder to store the learnt parameters, a network file to build the network architecture, agent file for the learing algorithm and 
-training file for the training procedure can be found in ```./data/Training/```.
+- Separate folders are created for each of the RL models such as ```vfa``` and ```mavfa```. Each model folder is further broken down into subfolders depending whether the communication network (```./Comms``` or ```/NoComms```) and best response procedure (```/BR``` or ```/NoBR```) are activated.
+- Each folder contains parameter folder to store the learnt parameters, training output, a network file to build the network architecture and agent file for the learning algorithm. The training file for the training procedure can be found in ```./data/Training/```.
 
 ### Training
 
@@ -94,7 +93,7 @@ training file for the training procedure can be found in ```./data/Training/```.
     - To allow replication of training or using the same training dataset to train a different model, include ```--save=True``` in the command line to save the training instances 
     and ```--replicate=True``` to use the same training instances.
     - The training instances are saved in ```./data/Training/instances/<poisson mean>/xxx/training_instances_<sectors>.pkl```.
-    - Each training instances contain the training scenarios and the corresponding results when running a myopic approach (i.e. running rescheduling heuristic with ejection chain 
+    - Each training instance contaisn the training scenarios and the corresponding results when running a myopic approach (i.e. running rescheduling heuristic with ejection chain 
     w/o any consideration for future value).
     - The output of the training include ```loss_by_step.pkl, presence_<sectors>.pkl```, ```success_<sectors>.pkl``` and ```respond_<sectors>.pkl``` containing the loss values, the presence utility value, success rate and response rate of each training episode measured as % improvement over myopic.
 
