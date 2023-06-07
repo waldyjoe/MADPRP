@@ -68,7 +68,7 @@ LEARN_EVERY = 10  # 10
 SEED = 1
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 25000
+EPS_DECAY = 2500
 
 # Params for initial schedule solver (dispatch rules)
 MAX_ITER_SOLVER = 3

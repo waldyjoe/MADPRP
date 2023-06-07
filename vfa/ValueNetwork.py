@@ -76,11 +76,13 @@ class ValueNetwork(nn.Module):
 
         transformed_encode =np.array(transformed_encode)
 
+
         to_encode = torch.from_numpy(transformed_encode).float().to(device)
 
         state = np.vstack(state[:, :-1]).astype(np.float)
 
         state = torch.from_numpy(state).float().to(device)
+
 
         # # for each agent, encode the time table
         # to_encode = torch.from_numpy(to_encode).float().to(device)
@@ -89,6 +91,9 @@ class ValueNetwork(nn.Module):
         hidden_state = self.encoder(embedded)
 
         hidden_state = torch.flatten(hidden_state, start_dim=1)
+
+        print(hidden_state)
+        sys.exit()
 
         transformed_state = torch.cat([state, hidden_state], 1)
 

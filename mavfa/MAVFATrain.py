@@ -18,14 +18,15 @@ from data.ScenarioGenerator import generate_scenario
 from mavfa.MAVFAAgent import MAVFAAgent
 from model.Simulator import Simulator
 from model.Simulator_parallel import *
-from util.ScheduleUtil import get_global_Q_j, get_objective_value, get_objective_value_MA, \
-    get_patrol_presence_status_MA, get_patrol_count_table_MA, get_post_joint_state, get_post_state
+from util.ScheduleUtil import compute_hamming_distance_joint, get_global_Q_j, get_objective_value, \
+    get_objective_value_MA, get_patrol_presence_status_MA, get_patrol_count_table_MA, get_post_joint_state, \
+    get_post_state
 from util.utils import get_time_index, str_to_bool
 from vfa.VFAAgent import VFAAgent
 
-ray.init(address=os.environ["ip_head"])
-print("Nodes in the Ray cluster:")
-print(ray.nodes())
+# ray.init(address=os.environ["ip_head"])
+# print("Nodes in the Ray cluster:")
+# print(ray.nodes())
 
 
 def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_name):
@@ -98,14 +99,17 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
     improve_presence_by_episode = []
 
     if str_to_bool(args.checkpoint):
-        with open("./output/" + folder_name + "/vfa_loss_by_step_" + sectors_file_id + ".pkl", "rb") as fp:
+        with open("./" + folder_name + "/output/vfa_loss_by_step_" + sectors_file_id + ".pkl", "rb") as fp:
             loss_by_step = pickle.load(fp)
-        with open("./output/" + folder_name + "/vfa_response_" + sectors_file_id + ".pkl", "rb") as fp:
+        with open("./" + folder_name + "/output/vfa_response_" + sectors_file_id + ".pkl", "rb") as fp:
             improve_response_by_episode = pickle.load(fp)
-        with open("./output/" + folder_name + "/vfa_success_" + sectors_file_id + ".pkl", "rb") as fp:
+        with open("./" + folder_name + "/output/vfa_success_" + sectors_file_id + ".pkl", "rb") as fp:
             improve_success_by_episode = pickle.load(fp)
-        with open("./output/" + folder_name + "/vfa_presence_" + sectors_file_id + ".pkl", "rb") as fp:
+        with open("./" + folder_name + "/output/vfa_presence_" + sectors_file_id + ".pkl", "rb") as fp:
             improve_presence_by_episode = pickle.load(fp)
+
+
+
 
     training_instances = []
 
@@ -198,6 +202,8 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
             #     pickle.dump(joint_states_pre, fp)
             #
             # sys.exit()
+
+
             f_p_pre = get_objective_value_MA(schedules_dict, sectors)
 
             sample = random.random()
@@ -291,7 +297,7 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
             if loss:
                 print("No of steps: " + str(steps_done) + " with loss: " + str(loss))
                 loss_by_step.append((steps_done, loss))
-                with open("./output/" + folder_name + "/vfa_loss_by_step_" + sectors_file_id + ".pkl", "wb") as fp:
+                with open("./" + folder_name + "/output/vfa_loss_by_step_" + sectors_file_id + ".pkl", "wb") as fp:
                     pickle.dump(loss_by_step, fp)
 
             # Computation time for each incident
@@ -309,16 +315,18 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
         end_training_episode = datetime.datetime.now()
 
         # Run myopic model
-        if str_to_bool(args.replicate):
+        if not str_to_bool(args.rerun_myopic):
             results_myopic = training_instances[i][2]
         else:
             # simulator_myopic = Simulator(sector, training_scenarios, initial_schedule)
             simulator_myopic = Simulator(sectors, training_scenarios, initial_schedules_dict, time_matrix, adj_matrix,
                                          neighbours_table)
             results_myopic, _ = simulator_myopic.run("myopic")
+            results_myopic = results_myopic[0]["Total"]
 
 
-        response_count_my, success_count_my, presence_score_my, _ = results_myopic[0]["Total"]
+        response_count_my, success_count_my, presence_score_my, _ = results_myopic
+
 
         # Compute % improvement over myopic
         improve_response = (response_count - response_count_my) / max(1, response_count_my) * 100
@@ -329,11 +337,11 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
         improve_response_by_episode.append((i, steps_done, improve_response))
         improve_success_by_episode.append((i, steps_done, improve_success))
         improve_presence_by_episode.append((i, steps_done, improve_presence))
-        with open("./output/" + folder_name + "/vfa_response_" + sectors_file_id + ".pkl", "wb") as fp:
+        with open("./" + folder_name + "/output/vfa_response_" + sectors_file_id + ".pkl", "wb") as fp:
             pickle.dump(improve_response_by_episode, fp)
-        with open("./output/" + folder_name + "/vfa_success_" + sectors_file_id + ".pkl", "wb") as fp:
+        with open("./" + folder_name + "/output/vfa_success_" + sectors_file_id + ".pkl", "wb") as fp:
             pickle.dump(improve_success_by_episode, fp)
-        with open("./output/" + folder_name + "/vfa_presence_" + sectors_file_id + ".pkl", "wb") as fp:
+        with open("./" + folder_name + "/output/vfa_presence_" + sectors_file_id + ".pkl", "wb") as fp:
             pickle.dump(improve_presence_by_episode, fp)
 
         # print(response_rate*incident_count, simulator.z[0])
@@ -359,8 +367,10 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
             with open("./" + folder_name + "/parameter/vfa_replay_buffer_" + sectors_file_id + "_" + str(i + 1) + ".pkl", "wb") as fp:
                 pickle.dump(vfa_agent.get_memory().get_memory_list(), fp)
 
+
+
         if str_to_bool(args.save) or str_to_bool(args.checkpoint):
-            training_instances.append((initial_schedules_dict, training_scenarios, results_myopic[0]["Total"]))
+            training_instances.append((initial_schedules_dict, training_scenarios, results_myopic))
 
             if not os.path.exists(training_folder):
                 os.makedirs(training_folder)
@@ -368,8 +378,12 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
             with open(training_folder + training_file, "wb") as fp:
                 pickle.dump(training_instances, fp)
 
+
+
         # Increment the episode number
         i += 1
+
+
 
     # Export the final learnt parameters
     torch.save(vfa_agent.get_network().state_dict(),  parameter_file_dir)
@@ -380,6 +394,7 @@ def train(sectors, time_matrix, adj_matrix, neighbours_table, args, subfolder_na
 
 
 def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count, args, subfolder_name):
+    start_run_time = datetime.datetime.now()
     # Initialize parameters
     if args.single_agent:
         is_multi_agent = False
@@ -448,7 +463,7 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
         with open(training_folder + training_file, "rb") as fp:
             training_instances = pickle.load(fp)
         num_episode = len(training_instances)
-        re_run_myopic = False
+        # re_run_myopic = False
 
         # if str_to_bool(args.checkpoint):
         #     orig_training_instances = deepcopy(training_instances[:args.checkpoint])
@@ -457,7 +472,7 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
     else:
         i = 0  # Iterator for number of episodes
         num_episode = args.episode
-        re_run_myopic = True
+        # re_run_myopic = True
 
         while i < num_episode:
             # print(i)
@@ -516,6 +531,11 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
     improve_response_by_episode = []
     improve_success_by_episode = []
     improve_presence_by_episode = []
+    response_by_episode = []
+    success_by_episode = []
+    presence_by_episode = []
+    hamming_by_episode = []
+
 
     if str_to_bool(args.checkpoint):
         with open("./" + folder_name + "/output/vfa_loss_by_step_" + sectors_file_id + ".pkl", "rb") as fp:
@@ -526,6 +546,14 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
             improve_success_by_episode = pickle.load(fp)
         with open("./" + folder_name + "/output/vfa_presence_" + sectors_file_id + ".pkl", "rb") as fp:
             improve_presence_by_episode = pickle.load(fp)
+        with open("./" + folder_name + "/output/vfa_response_rate_" + sectors_file_id + ".pkl", "rb") as fp:
+            response_by_episode = pickle.load(fp)
+        with open("./" + folder_name + "/output/vfa_success_rate_" + sectors_file_id + ".pkl", "rb") as fp:
+            success_by_episode = pickle.load(fp)
+        with open("./" + folder_name + "/output/vfa_presence_score_" + sectors_file_id + ".pkl", "rb") as fp:
+            presence_by_episode = pickle.load(fp)
+        with open("./" + folder_name + "/output/vfa_hamming_score_" + sectors_file_id + ".pkl", "rb") as fp:
+            hamming_by_episode = pickle.load(fp)
 
         checkpoint = len(improve_response_by_episode)
         if checkpoint > orig_save_param_freq:
@@ -534,8 +562,16 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
         i = checkpoint
         steps_done = loss_by_step[-1][0]
 
+    # update_counter = 0
     print("Total No. of Training Episodes:", num_episode)
     # For each training step i, <cpu_count> of episodes are running in parallel
+    # print("Model's state_dict:")
+    # for param_tensor in vfa_agent.get_network().state_dict():
+    #     print(param_tensor, "\t",vfa_agent.get_network().state_dict()[param_tensor].size())
+    # #
+    # total_params = sum(p.numel() for p in vfa_agent.get_network().parameters() if p.requires_grad)
+    # print(total_params)
+    # sys.exit()
     while num_episode_remain > 0:
         # while i < num_episode:
         start_episode = datetime.datetime.now()
@@ -565,7 +601,7 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
         # Update the replay buffer
         experiences = []
         for result in results:
-            experiences += result[4]
+            experiences += result[5]
 
         for experience in experiences:
             if is_multi_agent:
@@ -596,22 +632,31 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
                 print("No of steps: " + str(steps_done_for_recording) + " with loss: " + str(loss))
                 loss_by_step.append((steps_done_for_recording, loss))
 
+        # Update parameters
+        steps_done += len(experiences)
+        # dummy update to ensure that the network parameters are updated at every iteration
+        # if len(vfa_agent.get_memory()) > BATCH_SIZE:
+        #     setattr(vfa_agent, 't_step', update_counter)
+        #     sampled_experiences = vfa_agent.get_memory().sample()
+        #     if is_multi_agent:
+        #         loss = vfa_agent.learn(sampled_experiences, GAMMA, mask)
+        #     else:
+        #         loss = vfa_agent.learn(sampled_experiences, GAMMA)
+        #     if loss:
+        #         print("No of steps: " + str(steps_done) + " with loss: " + str(loss))
+        #         loss_by_step.append((steps_done, loss))
+
         # Export the new trained parameters to be passed to workers for subsequent training episodes
         torch.save(vfa_agent.get_network().state_dict(), parameter_file_dir)
         trained_parameters = torch.load(parameter_file_dir, map_location=device)
         # Update steps counting
         num_steps_since_last_learning = buffer_steps
-        steps_done += len(experiences)
 
         episode_idxs = [i + idx for idx in range(num_parallel_run)]
 
-        # if 3629 in episode_idxs:
-        #     re_run_myopic = True
-        re_run_myopic = True
-
         # Get results for myopic run
         # if str_to_bool(args.replicate) and not str_to_bool(args.checkpoint) and re_run_myopic == False:
-        if re_run_myopic == False:
+        if str_to_bool(args.rerun_myopic) == False:
             # If replicate the training instances without any checkpoints, read the results directly from the file
             results_my = []
             episode_idxs = [i + idx for idx in range(num_parallel_run)]
@@ -635,13 +680,14 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
             # Sort the results by the episode index
             # Result format (episode_idx, (response_count, success_count, presence_score, incident_count))
             results_my = sorted(results_my, key=lambda x: x[0])
-            re_run_myopic = True
+            # re_run_myopic = True
 
         # Compute % improvement over myopic
         for idx in range(num_parallel_run):
-            episode_idx, response_count, success_count, presence_score, _ = results[idx]
+            episode_idx, response_count, success_count, presence_score, hamming_score, _ = results[idx]
             episode_idx_my, result_myopic = results_my[idx]
-            response_count_my, success_count_my, presence_score_my, incident_count_dummy = result_myopic
+            response_count_my, success_count_my, presence_score_my, hamming_score_my, incident_count_dummy = \
+                result_myopic
             # sys.exit()
 
             if episode_idx != episode_idx_my:
@@ -664,6 +710,11 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
             improve_success_by_episode.append((episode_idx, steps_done, improve_success))
             improve_presence_by_episode.append((episode_idx, steps_done, improve_presence))
 
+            response_by_episode.append(response_count / incident_count)
+            success_by_episode.append(success_count / incident_count)
+            presence_by_episode.append(presence_score)
+            hamming_by_episode.append(hamming_score)
+
             print(str(response_count) + " out of " + str(incident_count) +
                   " incidents attended using VFA with " + str(success_count) + " incidents responded on time/earlier.")
             print(str(response_count_my) + " out of " + str(incident_count) +
@@ -679,6 +730,14 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
             pickle.dump(improve_success_by_episode, fp)
         with open("./" + folder_name + "/output/vfa_presence_" + sectors_file_id + ".pkl", "wb") as fp:
             pickle.dump(improve_presence_by_episode, fp)
+        with open("./" + folder_name + "/output/vfa_response_rate_" + sectors_file_id + ".pkl", "wb") as fp:
+            pickle.dump(response_by_episode, fp)
+        with open("./" + folder_name + "/output/vfa_success_rate_" + sectors_file_id + ".pkl", "wb") as fp:
+            pickle.dump(success_by_episode, fp)
+        with open("./" + folder_name + "/output/vfa_presence_score_" + sectors_file_id + ".pkl", "wb") as fp:
+            pickle.dump(presence_by_episode, fp)
+        with open("./" + folder_name + "/output/vfa_hamming_score_" + sectors_file_id + ".pkl", "wb") as fp:
+            pickle.dump(hamming_by_episode, fp)
         with open("./" + folder_name + "/parameter/vfa_replaybuffer_" + sectors_file_id + ".pkl",
                   "wb") as fp:
             pickle.dump(vfa_agent.get_memory().get_memory_list(), fp)
@@ -695,6 +754,7 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
         num_episode_remain -= num_parallel_run
         print(str(num_episode - num_episode_remain) + " out of " + str(num_episode) + " episodes completed")
         i += num_parallel_run
+        # update_counter += 1
 
         # Save trained parameters
         if len(improve_response_by_episode) > curr_save_param_freq:
@@ -703,6 +763,7 @@ def train_parallel(sectors, time_matrix, adj_matrix, neighbours_table, cpu_count
                        sectors_file_id + "_" + str(curr_save_param_freq) + ".pth")
 
             curr_save_param_freq = curr_save_param_freq + orig_save_param_freq
+
 
 
     # Export the final learnt parameters and replay buffer
@@ -895,10 +956,11 @@ def mavfa_train(sectors, time_matrix, adj_matrix, neighbours_table, args, is_mul
         response_count = get_response_count(z, 0)
         success_count = get_success_count(z, 0)
         presence_score = get_objective_value_MA(schedules_dict, sectors)
+        hamming_score = compute_hamming_distance_joint(schedules_dict, initial_schedules_dict)
 
         end_episode = datetime.datetime.now()
         episode_duration = (end_episode - start_episode).total_seconds()
         print("Total computation time for 1 episode: " + str(episode_duration) + 's')
         print("Episode " + str(episode_idx + 1) + " completed")
 
-        return episode_idx, response_count, success_count, presence_score, experiences
+        return episode_idx, response_count, success_count, presence_score, hamming_score, experiences

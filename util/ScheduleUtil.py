@@ -232,6 +232,23 @@ def compute_hamming_distance(schedule1, schedule2):
     return total_distance / len(time_tables1.keys())
 
 
+def compute_hamming_distance_joint(dict1, dict2):
+    """
+
+    :param dict1:
+    :param dict2:
+    :return:
+    """
+
+    hamming_distances = []
+
+    for key in dict1.keys():
+        hamming_distances.append(compute_hamming_distance(dict1[key], dict2[key]))
+
+    return np.mean(hamming_distances)
+
+
+
 def compute_max_hamming_distance(schedule1, schedule2):
     """
 
@@ -735,6 +752,9 @@ def get_post_state(schedule, sector, k):
 
     # Patrol status of each patrol area
     state += get_patrol_presence_status(schedule, sector)
+
+    # print(state)
+    # sys.exit()
 
     # Add the encoded schedule to the state
     time_tables_eff = get_effective_time_tables(schedule)

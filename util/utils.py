@@ -257,6 +257,27 @@ def get_input_parameters(sectors, sector_ids, encoding_size):
     return input_parameters
 
 
+def get_input_parameters_madqn(sectors, encoding_size):
+    input_parameters = {}
+
+    all_patrol_areas = []  # a list of all patrol area ids across the sectors
+    for sector_id in sectors.keys():
+        all_patrol_areas += [area.get_id() for area in sectors[sector_id].get_all_patrol_areas()]
+    all_patrol_areas = sorted(all_patrol_areas)
+    subagents_count = np.sum([sectors[sector_id].get_agents_count() for sector_id in sectors.keys()])
+    area_size = len(all_patrol_areas) + 2  # add 0 and -1 in the list of areas
+    state_size = 1 + subagents_count + area_size + 2 # 1 additional dimension corresponds to a list of encoded schedule
+    action_size = len(sectors.keys())
+    input_parameters["state_size"] = state_size
+    input_parameters["area_size"] = area_size
+    input_parameters["action_size"] = action_size
+    input_parameters["subagents_count"] = subagents_count
+    input_parameters["encoding_size"] = encoding_size
+
+
+    return input_parameters
+
+
 def str_to_bool(input_str):
     if input_str.lower() in ["true", "yes", "t", "y", "1"]:
         return True

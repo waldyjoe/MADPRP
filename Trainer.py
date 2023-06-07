@@ -8,11 +8,15 @@ import sys
 import torch
 # from actor_critic import A2CTrain
 from constants.Settings import CPU_UTIL
+from madqn import MADQNTrain
 from mavfa import MAVFATrain
 from dqn import DQNTrain
 from vfa import VFATrain
 
 from util.utils import extract_matrix, str_to_bool
+from util.ScheduleUtil import compute_hamming_distance_joint, get_global_Q_j, get_objective_value, \
+    get_objective_value_MA, get_patrol_presence_status_MA, get_patrol_count_table_MA, get_post_joint_state, \
+    get_post_state
 
 
 
@@ -34,9 +38,10 @@ if __name__ == "__main__":
     parser.add_argument("--save", default="False", type=str)
     parser.add_argument("--parallel_train", default="True", type=str)
     parser.add_argument("--parallel_heuristic", default="False", type=str)
-    parser.add_argument("--comms_net", default="True", type=str)
+    parser.add_argument("--comms_net", default="False", type=str)
     parser.add_argument("--best_response", default="True", type=str)
     parser.add_argument("--cpu_count", default=0, type=int)
+    parser.add_argument("--rerun_myopic", default="True", type=str)
 
     args = parser.parse_args()
 
@@ -77,13 +82,23 @@ if __name__ == "__main__":
             # Train sequentially
             vfa_agent = MAVFATrain.train(sectors, global_time_matrix, adj_matrix, neighbours_table, args, subfolder_name)
 
-
-    if "dqn" in args.model.lower():
+    if "madqn" in args.model.lower():
         if str_to_bool(args.parallel_train):
             subfolder_name = "BR" if str_to_bool(args.best_response) else "NoBR"
             cpu_count = int(CPU_UTIL * os.cpu_count()) if args.cpu_count == 0 else args.cpu_count
-            dqn_agent = DQNTrain.train_parallel(sectors, global_time_matrix, adj_matrix, neighbours_table, cpu_count,
+            dqn_agent = MADQNTrain.train_parallel(sectors, global_time_matrix, adj_matrix, neighbours_table, cpu_count,
                                                 args, subfolder_name)
+
+    else:
+
+        if "dqn" in args.model.lower():
+            if str_to_bool(args.parallel_train):
+                subfolder_name = "BR" if str_to_bool(args.best_response) else "NoBR"
+                cpu_count = int(CPU_UTIL * os.cpu_count()) if args.cpu_count == 0 else args.cpu_count
+                dqn_agent = DQNTrain.train_parallel(sectors, global_time_matrix, adj_matrix, neighbours_table, cpu_count,
+                                                    args, subfolder_name)
+
+
 
 
     # if args.model == "A2C":

@@ -10,7 +10,7 @@ from constants.Settings import BATCH_SIZE, EPSILON_B, MAX_ITER, TAU_TARGET, RESP
 from mavfa.MAVFAAgent import MAVFAAgent
 from model.PatrolPresence import *
 from model.ReschedulerMA import *
-from util.ScheduleUtil import get_global_Q_j, get_objective_value, get_objective_value_MA, get_post_state
+from util.ScheduleUtil import compute_hamming_distance_joint, get_global_Q_j, get_objective_value_MA, get_post_state
 from util.utils import response_utility_fn, round_to_nearest
 from vfa.VFAAgent import VFAAgent
 
@@ -75,8 +75,10 @@ class Simulator(object):
                 # Solution is a tuple of (sector_id, schedules dict, response utility))
                 if "greedy" in policy.lower():
                     solution = self.find_greedy_solution(schedules_dict, s, incident, policy)
-                elif "dqn" in policy.lower() or "central" in policy.lower():
+                elif policy.lower() == "dqn" or "central" in policy.lower():
                     solution = self.find_optimal_decision_central(schedules_dict, s, incident, policy, learning_agent)
+                elif policy.lower() == "madqn":
+                    solution = self.find_optimal_decision_madqn(schedules_dict, s, incident, policy, learning_agent)
                 else:
                     # Find optimal incident assignment and rescheduling decisions
                     solution = self.find_optimal_decision(schedules_dict, s, incident, policy, learning_agent)
@@ -103,6 +105,7 @@ class Simulator(object):
             response_count = self.get_response_count(s)
             success_count = self.get_success_count(s)
             presence_utility = get_objective_value_MA(schedules_dict, self.sectors)
+            hamming_dist = compute_hamming_distance_joint(schedules_dict, self.initial_schedules_dict)
             # print(presence_utility)
             # print(response_count)
             # print(success_count)
@@ -113,7 +116,8 @@ class Simulator(object):
             #     print(get_effective_time_tables(schedules_dict[sector]))
             # sys.exit()
             results.append({"Breakdown": results_per_scenario, "Total": (response_count, success_count,
-                                                                         presence_utility, len(self.scenarios[s]))})
+                                                                         presence_utility, hamming_dist,
+                                                                         len(self.scenarios[s]))})
             timings.append(timings_per_scenario)
 
         return results, timings
@@ -131,6 +135,8 @@ class Simulator(object):
         incident_time_index = get_time_index(incident.get_start_time())
         incident_location = incident.get_location().get_id()
         # response_time_kpi = get_time_index(round_to_nearest(TAU_TARGET, TIME_UNIT))
+        incident_sector = incident.get_sector()
+
 
         action_space = []  # All possible action
         action_space_eff = []  # All feasible action
@@ -197,6 +203,10 @@ class Simulator(object):
             if chosen_schedule:
                 response_utility = response_utility_fn(response_time * TIME_UNIT)
                 temp_schedules_dict[action[0]] = chosen_schedule
+
+                if len(temp_schedules_dict.keys()) > 1 and self.best_response:
+                    temp_schedules_dict = self.best_response_procedure(temp_schedules_dict, incident_time_index, policy)
+
                 return action[0], temp_schedules_dict, response_utility
 
         # No Feasible action
@@ -206,12 +216,17 @@ class Simulator(object):
 
         incident_time_index = get_time_index(incident.get_start_time())
         # incident_location = incident.get_location().get_id()
+        incident_sector = incident.get_sector()
+
 
         action_space = []  # All possible action
         action_space_eff = []  # All feasible action
 
         # Compile all possible actions
         for sector_id in schedules_dict.keys():
+            # if sector_id != incident_sector and sector_id not in self.neighbours_table[incident_sector]:
+            #     continue
+
             schedule = schedules_dict[sector_id]
 
             # Find feasible action i.e. agent and corresponding time to respond
@@ -250,6 +265,52 @@ class Simulator(object):
         else:
 
             return None, schedules_dict, 0
+
+    def find_optimal_decision_madqn(self, schedules_dict, s, incident, policy, learning_agent=None):
+
+        incident_sector = incident.get_sector()
+        incident_time_index = get_time_index(incident.get_start_time())
+
+        action_space = []  # All possible action
+        action_space_eff = []  # All feasible action
+
+
+        # Compile all possible actions
+        for sector_id in schedules_dict.keys():
+            action_space.append(sector_id)
+
+            if not (sector_id != incident_sector and sector_id not in self.neighbours_table[incident_sector]):
+                action_space_eff.append(sector_id)
+
+        state_pre = get_pre_state_MA(schedules_dict, self.Q_j, self.all_patrol_areas, incident)
+        action_idx = learning_agent.act(state_pre)
+
+        action = action_space[action_idx]
+
+        if action in action_space_eff:
+
+            # Original schedules_dict is kept intact
+            temp_schedules_dict = deepcopy(schedules_dict)
+            # Insert the incident into the sector id and reschedule it
+            schedule, response_utility = self.incident_response_procedure(temp_schedules_dict, action, 0,
+                                                                               incident, "myopic")
+
+            if schedule:
+                schedules_dict[action] = schedule
+
+                if self.best_response:
+                    schedules_dict = self.best_response_procedure(schedules_dict, incident_time_index, "myopic")
+
+                return action, schedules_dict, response_utility
+
+            else:
+
+                return None, schedules_dict, 0
+
+        else:
+
+            return None, schedules_dict, 0
+
 
 
     def find_optimal_decision(self, schedules_dict, s, incident, policy, learning_agent=None):
@@ -490,7 +551,7 @@ class Simulator(object):
         if len(action_space_eff) == 0:
             # print("No feasible rescheduling action")
             # self.z[s].append(0)  # 0 means incident is not attended to
-            return schedules_dict, 0
+            return schedule, 0
             # return schedule, 0
 
         # If policy used is DQN
@@ -658,7 +719,7 @@ class Simulator(object):
 
         return response_count
 
-        return sum(self.z[s])
+        # return sum(self.z[s])
 
     def get_success_count(self, s):
 

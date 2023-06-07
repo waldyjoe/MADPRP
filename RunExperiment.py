@@ -10,10 +10,11 @@ import torch
 from constants.Settings import *
 from data.ScenarioGenerator import *
 # from dqn.DQNAgent import DQNAgent
+from madqn.MADQNAgent import MADQNAgent
 from mavfa.MAVFAAgent import *
 from model.Simulator import *
 from model.Simulator_parallel import *
-from util.utils import extract_matrix, get_input_parameters, str_to_bool
+from util.utils import extract_matrix, get_input_parameters, get_input_parameters_madqn, str_to_bool
 from vfa.VFAAgent import *
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -161,17 +162,25 @@ def run_experiment_parallel(sectors, time_matrix, adj_matrix, neighbours_table, 
     print("Running experiment no: " + str(exp_idx + 1))
 
     # Initialize parameters
-    if args.single_agent:
-        is_multi_agent = False
-        sectors_file_id = args.single_agent
-        sectors = {k: v for k, v in sectors.items() if k == args.single_agent}
-        parameter_file_dir = "./vfa/parameter/vfa_parameters_" + args.single_agent + ".pth"
-        folder_name = "vfa"
-    else:
+    if "vfa" in model.lower():
+        if args.single_agent:
+            is_multi_agent = False
+            sectors_file_id = args.single_agent
+            sectors = {k: v for k, v in sectors.items() if k == args.single_agent}
+            parameter_file_dir = "./vfa/parameter/vfa_parameters_" + args.single_agent + ".pth"
+            folder_name = "vfa"
+        else:
+            is_multi_agent = True
+            sectors_file_id = args.sectors
+            parameter_file_dir = "./mavfa/parameter/vfa_parameters_" + args.sectors + ".pth"
+            folder_name = "mavfa"
+
+    elif model.lower() == "madqn":
         is_multi_agent = True
         sectors_file_id = args.sectors
-        parameter_file_dir = "./mavfa/parameter/vfa_parameters_" + args.sectors + ".pth"
-        folder_name = "mavfa"
+        parameter_file_dir = "./madqn/parameter/madqn_parameters_" + args.sectors + ".pth"
+        folder_name = "madqn"
+
 
     if str_to_bool(args.replicate):
 
@@ -244,22 +253,35 @@ def run_experiment_parallel(sectors, time_matrix, adj_matrix, neighbours_table, 
 
         learning_agent = None
         if str_to_bool(args.pre_trained):
-            n_agents = input_parameters["n_agents"]
-            state_size = input_parameters["state_size"]
-            area_size = input_parameters["area_size"]
-            subagent_dim = input_parameters["subagent_dim"]
-            encoding_size = input_parameters["encoding_size"]
-            sector_ids = input_parameters["sector_ids"]
 
-            if len(sectors.keys()) > 1:
-                learning_agent = MAVFAAgent("False", sector_ids, n_agents, state_size, ACTION_SIZE, SEED, area_size,
-                                       subagent_dim, encoding_size, HIDDEN_DIM, ATTN_OUT_DIM,
-                                            trained_parameters=trained_parameters, imported_memory=[],
-                                            comms_net=str_to_bool(args.comms_net))
-            else:
-                # Single agent problem
-                learning_agent = VFAAgent(state_size, ACTION_SIZE, SEED, "False", sector_ids, area_size, subagent_dim,
-                                     encoding_size, trained_parameters=trained_parameters)
+            if "vfa" in model.lower():
+                n_agents = input_parameters["n_agents"]
+                state_size = input_parameters["state_size"]
+                area_size = input_parameters["area_size"]
+                subagent_dim = input_parameters["subagent_dim"]
+                encoding_size = input_parameters["encoding_size"]
+                sector_ids = input_parameters["sector_ids"]
+
+                if len(sectors.keys()) > 1:
+                    if "vfa" in model.lower():
+                        learning_agent = MAVFAAgent("False", sector_ids, n_agents, state_size, ACTION_SIZE, SEED, area_size,
+                                               subagent_dim, encoding_size, HIDDEN_DIM, ATTN_OUT_DIM,
+                                                    trained_parameters=trained_parameters, imported_memory=[],
+                                                    comms_net=str_to_bool(args.comms_net))
+                else:
+                    # Single agent problem
+                    learning_agent = VFAAgent(state_size, ACTION_SIZE, SEED, "False", sector_ids, area_size, subagent_dim,
+                                         encoding_size, trained_parameters=trained_parameters)
+
+            elif model.lower() == "madqn":
+                state_size = input_parameters["state_size"]
+                area_size = input_parameters["area_size"]
+                action_size = input_parameters["action_size"]
+                subagents_count = input_parameters["subagents_count"]
+                encoding_size = input_parameters["encoding_size"]
+
+                learning_agent = MADQNAgent("False", state_size, action_size, SEED, area_size, subagents_count,
+                                            encoding_size, trained_parameters=trained_parameters)
 
         result_raw, computation_time_raw = simulator.run(model, learning_agent)  # Input policy (in string) and learning agent
         # Return the raw results and raw computation times for each scenario in a given experiment
@@ -303,6 +325,9 @@ if __name__ == "__main__":
         data = pickle.load(fp)
     # data.show_summary(1)
 
+
+
+
     # Extract the global time travel matrix
     global_time_matrix = data.get_time_matrix()
 
@@ -310,6 +335,9 @@ if __name__ == "__main__":
     sectors = {}
     for element in args.sectors:
         sectors[element] = data.get_master_table()[element]
+
+    # print([sectors[sector_id].show_summary() for sector_id in sectors.keys()])
+    # sys.exit()
 
     for sector_id in sectors:
         sectors[sector_id].update_proximity_table(sectors, global_time_matrix)
@@ -337,22 +365,34 @@ if __name__ == "__main__":
         # input_parameters["subagent_dim"] = subagent_dim
         # input_parameters["encoding_size"]= args.encoding_size
         # input_parameters["sector_ids"] = args.sectors
-        if args.single_agent:
-            sectors = {k: v for k, v in sectors.items() if k == args.single_agent}
-            input_parameters = get_input_parameters(sectors, args.single_agent, args.encoding_size)
-            trained_parameters = torch.load("./vfa/parameter/vfa_parameters_" + args.single_agent + ".pth",
-                                            map_location=device)
-        else:
-            comms = "Comms/" if str_to_bool(args.comms_net) else "NoComms/"
+
+        if args.model.lower() == "vfa":
+            if args.single_agent:
+                sectors = {k: v for k, v in sectors.items() if k == args.single_agent}
+                input_parameters = get_input_parameters(sectors, args.single_agent, args.encoding_size)
+                trained_parameters = torch.load("./vfa/parameter/vfa_parameters_" + args.single_agent + ".pth",
+                                                map_location=device)
+            else:
+                comms = "Comms/" if str_to_bool(args.comms_net) else "NoComms/"
+                br = "BR" if str_to_bool(args.best_response) else "NoBR"
+
+                subfolder_name = comms + br
+
+                default_filename = str(args.sectors) + "_" + str(args.model.lower()) + "_" + comms[:-1] + "_" + br + "_" + str(
+                    args.experiment) + "_" + str(args.scenario)
+
+                input_parameters = get_input_parameters(sectors, args.sectors, args.encoding_size)
+                trained_parameters = torch.load("./mavfa/" + subfolder_name + "/parameter/vfa_parameters_" +
+                                                args.sectors + "_final.pth", map_location=device)
+
+        elif args.model.lower() == "madqn":
+
             br = "BR" if str_to_bool(args.best_response) else "NoBR"
-
-            subfolder_name = comms + br
-
-            default_filename = str(args.sectors) + "_" + str(args.model.lower()) + "_" + comms[:-1] + "_" + br + "_" + str(
+            subfolder_name = br
+            default_filename = str(args.sectors) + "_" + str(args.model.lower()) + "_" + br + "_" + str(
                 args.experiment) + "_" + str(args.scenario)
-
-            input_parameters = get_input_parameters(sectors, args.sectors, args.encoding_size)
-            trained_parameters = torch.load("./mavfa/" + subfolder_name + "/parameter/vfa_parameters_" +
+            input_parameters = get_input_parameters_madqn(sectors, args.encoding_size)
+            trained_parameters = torch.load("./madqn/" + subfolder_name + "/parameter/madqn_parameters_" +
                                             args.sectors + "_final.pth", map_location=device)
 
 

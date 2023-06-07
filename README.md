@@ -90,10 +90,10 @@ training file for the training procedure can be found in ```./data/Training/```.
 
 2. Refer ```./xxx/XXXTrain.py```
     - Contains the training procedure for xxx model.
-    - The learnt parameters are saved in ```./xxx/parameters```. 
+    - The learnt parameters are saved in ```./xxx/parameters/``` while the output files are saved in ```./xxx/output/```.
     - To allow replication of training or using the same training dataset to train a different model, include ```--save=True``` in the command line to save the training instances 
     and ```--replicate=True``` to use the same training instances.
-    - The training instances are saved in ```./data/Training/instances/<poisson mean>/training_instances_<sectors>.pkl```.
+    - The training instances are saved in ```./data/Training/instances/<poisson mean>/xxx/training_instances_<sectors>.pkl```.
     - Each training instances contain the training scenarios and the corresponding results when running a myopic approach (i.e. running rescheduling heuristic with ejection chain 
     w/o any consideration for future value).
     - The output of the training include ```loss_by_step.pkl, presence_<sectors>.pkl```, ```success_<sectors>.pkl``` and ```respond_<sectors>.pkl``` containing the loss values, the presence utility value, success rate and response rate of each training episode measured as % improvement over myopic.
@@ -112,8 +112,12 @@ and ```--replicate=True``` to use the same testing instances.
 ### Sample Run command
 
 ```
-python Trainer.py --sectors=EFL --model=VFA--poisson_mean=2
+python Trainer.py --sectors=EFL --model=VFA--poisson_mean=2 --pre_trained=True
 python RunExperiment.py --sectors=EFL --model=greedy
 ```
-Note: If only one sector is inputted, the model should solve it as if it is a single-agent problem.
+Note: 
+- If only one sector is inputted, the model should solve it as if it is a single-agent problem.
+- You may input the following models in the ```--model=```: greedy, myopic, VFA or MADQN.
+- Ensure thate ```pre_trained=True``` if you are running learned models. Make sure that the parameter file is located at the corresponding parameter subfolder (for e.g. ```./xxx/parameters/```).
 
+## References
